@@ -1,0 +1,188 @@
+---
+title: "Module 15 | Final Project"
+author: "Morris Wu"
+date: "2024-12-03"
+output: pdf_document
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(randomForest)
+cars_big <- read_csv("C:/Users/morri/Desktop/Fa24 - INTRO TO MACHINE LEARNING/cars_big.csv")
+View(cars_big)
+social_marketing <- read_csv("C:/Users/morri/Desktop/Fa24 - INTRO TO MACHINE LEARNING/social_marketing.csv")
+View(social_marketing)
+```
+
+# Data Set 1 – Pricing cars
+  The supervised learning method I selected for the cars_big dataset is "random forest," which combines the predictions of multiple decision trees. To fit the model with regression, I followed five main steps: First, I processed the data by replacing unspecified values and converting categorical values into numerical or factor types. Second, I ran a shallow random forest to identify columns with low contribution to the predictive value and removed them from the dataset. Third, I split the data into training and testing sets. Fourth, I imputed missing values in the dataset using the na.roughfix function, which replaces missing values with the median or mode. Finally, I trained the model using the training dataset, setting price as the target variable.
+
+## Data Processing
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cars_big <- cars_big %>% mutate(across(where(is.character), ~ na_if(., "unsp")))
+cars_big$isOneOwner <- ifelse(cars_big$isOneOwner == "TRUE", 1, 0)
+cars_big$displacement <- sub("L$", "", cars_big$displacement)
+cars_big$wheelSize <- gsub("\\s", "", cars_big$wheelSize)
+cars_big$wheelSize <- as.numeric(cars_big$wheelSize) 
+cars_big$displacement <- as.numeric(cars_big$displacement) 
+cars_big$subTrim <- as.factor(cars_big$subTrim)
+cars_big$condition <- as.factor(cars_big$condition)
+cars_big$color <- as.factor(cars_big$color)
+cars_big$state <- as.factor(cars_big$state)
+cars_big$trim <- as.factor(cars_big$trim)
+cars_big$fuel <- as.factor(cars_big$fuel)
+cars_big$soundSystem <- as.factor(cars_big$soundSystem)
+cars_big$wheelType <- as.factor(cars_big$wheelType)
+cars_big$region <- as.factor(cars_big$region)
+column_types <- sapply(cars_big, class)
+#print(column_types)
+```
+Details on how I processed the data set:  
+  •Replaced missing values and "unsp" in columns with NA.  
+  •Converted Boolean value columns, such as isOneOwner, to numeric values where 1 equals TRUE and 0 equals FALSE.   
+  •Removed irrelevant characters in certain columns, such as removing "L" from displacement and whitespace from wheelSize.   
+  •Converted all columns with numerical data to numeric types and all columns with categorical data to factor types.    
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cars_big_copy <- na.omit(cars_big)
+rf_model <- randomForest(price ~ ., data = cars_big_copy, importance = TRUE, ntree = 500)
+importance(rf_model)
+
+columns_to_remove <- c("...1", "subTrim", "isOneOwner", "region")
+cars_big <- cars_big[, !(colnames(cars_big) %in% columns_to_remove)]
+#View(cars_big)
+```
+Details on feature Selection Process:  
+  •First, I copied the processed dataset and removed rows with missing values using the na.omit function to ensure the dataset was clean and ready for modeling.  
+  •Second, I trained the copied dataset using the Random Forest model, limiting the number of decision trees to 500. This was done to reduce processing time  while maintaining accuracy.  
+  •Third, I used the importance function to evaluate the importance of each feature. 
+  
+  Based on the output of the importance function, I focused on features with lower to negative %IncMSE values, as these features either contributed little to the model or negatively impacted its performance. However, considering that the sample size was significantly reduced due to the na.omit function, I opted to remove only 4 features to avoid over-simplifying the model which includes: "...1", "subTrim", "isOneOwner", "region".  
+
+## Fitting the Model
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+train_index <- sample(seq_len(nrow(cars_big)), size = 0.7 * nrow(cars_big))
+train_data <- cars_big[train_index, ]
+test_data <- cars_big[-train_index, ]
+
+train_data <- na.roughfix(train_data)
+#train_data
+test_data <- na.roughfix(test_data)
+#test_data
+rf_model_1 <- randomForest(price ~ ., data = train_data, importance = TRUE, ntree = 300, mtry = 5)
+predictions <- predict(rf_model_1, newdata = test_data)
+#predictions
+actual <- test_data$price
+#actual
+```
+  To fit the models and run the regression, I first generate a random sample and split the dataset into 70% training and 30% testing datasets. I then handle the missing values using na.roughfix to ensure there are no missing values. After that, I build the Random Forest regression model to predict the price variable. Due to the large dataset size, I specify the model to use 300 decision trees and limit the number of features randomly selected at each split to 5. Finally, I generate predictions for the price variable in the test dataset using the trained model. By comparing the predicted values with the actual results, we can evaluate the accuracy of the model.  
+
+## Result summary
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+mae <- mean(abs(predictions - actual))
+rmse <- sqrt(mean((predictions - actual)^2))
+ss_total <- sum((actual - mean(actual))^2)
+ss_residual <- sum((actual - predictions)^2)
+r_squared <- 1 - (ss_residual / ss_total)
+cat("MAE:", mae, "\n")
+cat("RMSE:", rmse, "\n")
+cat("R-squared:", r_squared, "\n")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+plot(actual, predictions,
+     xlab = "Actual Prices", 
+     ylab = "Predicted Prices", 
+     main = "Scatter Plot: Actual vs Predicted Prices",
+     pch = 16, col = "blue")
+abline(0, 1, col = "red", lwd = 2)
+```
+  Based on the outcome, my model has a Mean Absolute Error of 4412.012, meaning the model's predictions are off by approximately $4,412 from the actual prices. Additionally, the model has a Root Mean Squared Error of 7089.5, which indicates that some predictions deviate significantly from the actual values. The R-squared value of 0.9748817 is a good sign, showing that 97.49% of the variability in price is captured by the Random Forest model.  
+
+  By looking at the scatter plot of actual prices versus predicted prices, we can also conclude that the model captures the trend of car prices since the trend line aligns closely with the scatter plot points. Although the model is fairly accurate, there are still some outliers and room for improvement. For example, in the plot, some cars are actually priced at 20,000+ dollars while the model predicts them to be 10,000 dollars cars. This indicates that the model does not perform as well, especially when the actual prices of cars are on the higher side.  
+
+
+# Data Set 2 – Market segmentation  
+  Supervised model are mainly used for predicting dependent variables with the independent variable. Meanwhile, unsupervised learn are used to find patterns and correlation between different factors. Since the project's objective is focusing on "identifying" market segments, it is more suitable to use unsupervised learning in this situation. If the question is asking us to predict how many tweet a followers have that are related to a certain broad area of interest, then supervised model will be recommended.  
+
+  To process the data, I first removed the first column, and convert all variables into numerical values. Since the goal for the project is to identify the "market" segments for NutrientH20 based on their social media audiences, the customers' id does not provide contribution to our model. The next step I scaled to data ensuring that all variable have the same performances, and applied the PCA to the scaled data.  Based on the Cumulative Proportion from summary pca results, we can see that we need the first 25 principal data to capture most variance(90.6%) in the data. After selecting the first 25 PCs, I used the K clustering means to perform on the 25 PCs and created a total of 5 clusters.
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+social_marketing <- social_marketing %>%
+  mutate(across(-1, as.numeric))
+social_marketing<- social_marketing %>%
+  select(-1)
+social_marketing_scaled =scale(social_marketing)
+pca_result <- prcomp(social_marketing_scaled)
+summary(pca_result)
+
+scree_data <- data.frame(
+  Principal_Component = seq(1, length(pca_result$sdev)),
+  Variance_Explained = (pca_result$sdev^2) / sum(pca_result$sdev^2)
+)
+#scree_data
+pca_scores <- as.data.frame(pca_result$x)
+
+pca_selected <- pca_scores[, 1:25]
+
+set.seed(42)
+kmeans_result <- kmeans(pca_selected, centers = 5, nstart = 25)
+pca_selected$Cluster <- as.factor(kmeans_result$cluster)
+```
+# Results Summary
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+cluster_summary <- pca_selected %>%
+  group_by(Cluster) %>%
+  summarise(across(starts_with("PC"), mean, na.rm = TRUE))
+cluster_summary
+
+ggplot(pca_selected, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(alpha = 0.7, size = 3) +
+  ggtitle("Market Segments Identified via PCA and Clustering") +
+  xlab("Principal Component 1") +
+  ylab("Principal Component 2") +
+  theme_minimal()
+
+loadings <- pca_result$rotation
+#loadings[, 1:5]
+top_factors_with_loadings <- apply(loadings[, 1:5], 2, function(pc) {
+  sorted_indices <- order(abs(pc), decreasing = TRUE)
+  top_variables <- rownames(loadings)[sorted_indices[1:5]]
+  top_loadings <- pc[sorted_indices[1:5]]
+  data.frame(Variable = top_variables, Loading = top_loadings)
+})
+print(top_factors_with_loadings)
+```
+After the 5 clusters were differentiated, I created a scatter plot to visualize the distribution of data points across the first two principal components, as they capture the majority of the variance in the data. The plot allows us to easily identify each market segment. Based on the visualization, clusters 4 and 5 appear more distinct, while clusters 1, 2 and 3 show significant overlap, which may indicate that they share more characteristics. Additionally, clusters 2, 3 and 4 are more spread out compared to cluster 5, which suggests that their followers may have broader and more diverse interests. In contrast, cluster 5 is more compact, indicating that its followers likely have a more niche interest.  
+
+To better understand what each cluster represents, the next step is to group the data by cluster, analyze the PCA scores for each cluster, and identify the features most strongly associated with each principal component. Additionally, I created a summary of the top features with the highest loading for the first five principal components to provide further insight.  
+
+As shown in the cluster summary(shows each cluster's PCA scores):    
+  •Cluster 1 has strongly negative values in PC3 and PC5, with a positive value in PC2.   
+  •Cluster 2 has strong positive values in PC2 and PC3.   
+  •Cluster 3 has a strongly negative value in PC4 and a strong positive value in PC2.   
+  •Cluster 4 has strongly negative values in PC1 and PC2.   
+  •Finally, Cluster 5 has a slightly positive value in PC1.  
+  
+As shown in the loading summaries (which display the loading of each principal component):   
+  •The variance captured by PC1 appears to be more related to lifestyle, as features such as food, sports, and religion have higher loading.   
+  •The variance captured by PC2 seems to be associated with health, as features like health_nutrition, personal_fitness, and cooking have stronger loading.   
+  •The variance captured by PC3 indicates a contrast, where health is negatively associated with education and gaming.   
+  •The variance captured by PC4 might relate to popular news, with features such as politics, news, fashion, and automotive having higher loading.   
+  •The variance captured by PC5 reflects a trade-off between education and gaming on one side, and social interests (news, politics, and fashion) on the other, as suggested by the loading.      
+  
+By combining the observations made from the two summaries, we can conclude that:     
+  •Cluster 1 might represent groups of people who focus more on health but are less engaged in socially related topics such as news, politics, and fashion.   
+  •Cluster 2 might represent groups of people who also focus on health but are highly engaged in education and gaming, showing a broader interest balance.   
+  •Cluster 3 is very similar to Cluster 1, representing groups of people who prioritize health while being less socially engaged.   
+  •Cluster 4 might represent groups of people who are less interested in both lifestyle and health-related topics, indicating limited engagement in these areas.  
+  •Cluster 5 represents groups of people who have less interest in health but display more diverse interests in topics such as food, sports, and religion.     
+  
+Since Clusters 1, 2, and 3 share high similarity and show overlap on the scatter plot, they can be combined into a single cluster. This consolidation simplifies the segmentation.
+
+# Conclusion:
+In conclusion, NutrientH20's social-media audience can be defined into three market segments: people who focus on health, people who focus on lifestyle, and people who care less about both topics. People within the health-focused segment are likely to create posts related to topics such as nutrition, fitness, and cooking. Meanwhile, individuals in the lifestyle segment tend to post about food, sports, or their religious interests. The last group, who are uninterested in both topics, should not be a primary target audience, as their diverse interests are harder to specify and align with NutrientH20's brand messaging.  
+
+By examining the PCA results, it is evident that the overall data is quite diverse, making it somewhat challenging to clearly differentiate all clusters. However, the analysis still provided valuable insights for advertising strategies. To attract the most relevant audiences, NutrientH20 should focus on launching campaigns that align with health and lifestyle interests. For individuals in Cluster 4 (those with limited engagement in health and lifestyle topics), the company should allocate fewer resources, due to the lack of clear trend of interest.
